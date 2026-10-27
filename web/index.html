@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HandCursor — Điều khiển chuột bằng cử chỉ tay không chạm (Zero-Touch Mouse)</title>
+  <meta name="description" content="HandCursor: Trải nghiệm điều khiển máy tính bằng cử chỉ tay không chạm qua webcam với MediaPipe, bộ lọc One-Euro chống rung và chế độ bù sáng thông minh.">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- MediaPipe Hands & Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Ambient Background Glows -->
+  <div class="ambient-background">
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+  </div>
+
+  <!-- Virtual Floating Cursor -->
+  <div id="virtual-cursor">
+    <div class="cursor-outer-ring"></div>
+    <div class="cursor-center-dot"></div>
+  </div>
+
+  <!-- 4-Corner Calibration Targets -->
+  <div id="target-tl" class="calibration-target" style="top: 30px; left: 30px;">1</div>
+  <div id="target-tr" class="calibration-target" style="top: 30px; right: 30px;">2</div>
+  <div id="target-br" class="calibration-target" style="bottom: 30px; right: 30px;">3</div>
+  <div id="target-bl" class="calibration-target" style="bottom: 30px; left: 30px;">4</div>
+
+  <!-- App Main Wrapper -->
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-wrapper">
+        <div class="logo-badge">✋</div>
+        <div class="brand-info">
+          <h1>HandCursor <span class="version-tag">PROTOTYPE v0.1</span></h1>
+          <p>Điều khiển chuột cử chỉ tay không chạm • 100% Offline • One-Euro Filter</p>
+        </div>
+      </div>
+
+      <!-- Realtime Telemetry HUD -->
+      <div class="telemetry-ribbon">
+        <div class="telemetry-item">
+          <div class="status-dot" id="cam-status-dot"></div>
+          <span class="telemetry-label">Camera</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">FPS</span>
+          <span class="telemetry-value" id="fps-val">0</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Độ sáng</span>
+          <span class="telemetry-value" id="lux-val">--</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Khoảng cách chụm</span>
+          <span class="telemetry-value" id="pinch-dist-val">--</span>
+        </div>
+      </div>
+
+      <!-- Top Actions -->
+      <div class="header-controls">
+        <button id="btn-toggle-cam" class="btn-action primary" title="Bật/Tắt Webcam">
+          <span class="btn-icon">📷</span>
+          <span id="btn-cam-text">Bật Camera</span>
+        </button>
+        <button id="btn-screen-glow" class="btn-action" title="Tự bù sáng ban đêm bằng viền màn hình">
+          <span class="btn-icon">💡</span>
+          <span>Bù sáng viền</span>
+        </button>
+        <button id="btn-calibrate" class="btn-action" title="Cân chỉnh 4 góc màn hình 10 giây">
+          <span class="btn-icon">🎯</span>
+          <span>Cân chỉnh (10s)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace Grid -->
+    <main class="workspace-grid">
+      
+      <!-- Left Column: Camera Feed & Gestures HUD -->
+      <aside class="sidebar-panel">
+        
+        <!-- Webcam Viewport Card -->
+        <section class="card-glass" aria-labelledby="vision-title">
+          <div class="card-title-row">
+            <h2 id="vision-title" class="card-title">👁️ Thị giác máy tính (Vision)</h2>
+            <label style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+              <input type="checkbox" id="chk-draw-mesh" checked> Khung xương
+            </label>
+          </div>
+
+          <div class="camera-container">
+            <video id="webcam-video" playsinline></video>
+            <canvas id="landmarks-canvas"></canvas>
+            
+            <div id="cam-placeholder" class="camera-placeholder">
+              <span style="font-size: 2.2rem;">👋</span>
+              <p>Nhấn <strong>"Bật Camera"</strong> ở trên để bắt đầu trải nghiệm HandCursor.</p>
+            </div>
+
+            <div class="camera-overlay-badge" id="hand-count-badge" style="display: none;">
+              <span>✋ Phát hiện tay</span>
+            </div>
+          </div>
+
+          <!-- Gesture Status HUD -->
+          <div class="gesture-hud-box">
+            <div class="gesture-status-line">
+              <span class="telemetry-label">Cử chỉ hiện tại:</span>
+              <span class="gesture-name-badge pointing" id="gesture-badge">Chờ camera...</span>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-dim); margin-bottom: 3px;">
+                <span>Lực chụm ngón (Pinch Meter)</span>
+                <span id="pinch-percent-text">0%</span>
+              </div>
+              <div class="pinch-meter">
+                <div class="pinch-meter-fill" id="pinch-meter-fill"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Gesture Cheatsheet -->
+        <section class="card-glass" aria-labelledby="cheatsheet-title">
+          <div class="card-title-row">
+            <h2 id="cheatsheet-title" class="card-title">📖 Bảng cử chỉ (Cheatsheet)</h2>
+          </div>
+          <div class="cheatsheet-list">
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">👆</span>
+                <span>Dáng trỏ</span>
+              </div>
+              <span class="gesture-desc">Di chuyển chuột</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">🤏</span>
+                <span>Chụm ngón</span>
+              </div>
+              <span class="gesture-desc">Click trái</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">⚡</span>
+                <span>Chụm 2 lần</span>
+              </div>
+              <span class="gesture-desc">Double Click</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">✌️</span>
+                <span>2 Ngón tay</span>
+              </div>
+              <span class="gesture-desc">Cuộn lên / xuống</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">🤏 giữ</span>
+                <span>Chụm & kéo</span>
+              </div>
+              <span class="gesture-desc">Kéo thả / Bôi đen</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">🤌</span>
+                <span>Chụm ngón giữa</span>
+              </div>
+              <span class="gesture-desc">Chuột phải</span>
+            </div>
+            <div class="cheatsheet-item">
+              <div class="gesture-icon-label">
+                <span class="gesture-icon">✊</span>
+                <span>Nắm đấm</span>
+              </div>
+              <span class="gesture-desc">Tạm dừng (Clutch)</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tuning Sliders Card -->
+        <section class="card-glass" aria-labelledby="tuning-title">
+          <div class="card-title-row">
+            <h2 id="tuning-title" class="card-title">⚙️ Tinh chỉnh độ nhạy</h2>
+          </div>
+          <div class="slider-group">
+            <div class="slider-item">
+              <div class="slider-label-row">
+                <span>Tốc độ chuột (Sensitivity)</span>
+                <span id="lbl-sensitivity">1.5x</span>
+              </div>
+              <input type="range" id="rng-sensitivity" class="slider-input" min="0.8" max="3.0" step="0.1" value="1.5">
+            </div>
+            <div class="slider-item">
+              <div class="slider-label-row">
+                <span>Lọc rung One-Euro (Smoothness)</span>
+                <span id="lbl-smoothing">Cao</span>
+              </div>
+              <input type="range" id="rng-smoothing" class="slider-input" min="0.001" max="0.05" step="0.002" value="0.01">
+            </div>
+            <div class="slider-item">
+              <div class="slider-label-row">
+                <span>Ngưỡng nhận diện chụm (Pinch Sens)</span>
+                <span id="lbl-pinch-thresh">0.055</span>
+              </div>
+              <input type="range" id="rng-pinch-thresh" class="slider-input" min="0.03" max="0.09" step="0.005" value="0.055">
+            </div>
+          </div>
+        </section>
+
+      </aside>
+
+      <!-- Right Column: Interactive Test Playground -->
+      <section class="playground-area" aria-label="Interactive Playground">
+        
+        <!-- Navigation Tabs -->
+        <nav class="playground-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="tab-clicks" role="tab" aria-selected="true">
+            <span>🖱️</span> Nút bấm & Click
+          </button>
+          <button class="tab-btn" data-tab="tab-kanban" role="tab" aria-selected="false">
+            <span>📦</span> Kéo thả (Drag & Drop)
+          </button>
+          <button class="tab-btn" data-tab="tab-drawing" role="tab" aria-selected="false">
+            <span>🎨</span> Vẽ ngón tay (Precision)
+          </button>
+          <button class="tab-btn" data-tab="tab-slides" role="tab" aria-selected="false">
+            <span>📽️</span> Thuyết trình (Vuốt Slide)
+          </button>
+        </nav>
+
+        <!-- Tab 1: Clicks & Actions -->
+        <div id="tab-clicks" class="tab-content active" role="tabpanel">
+          <div class="action-grid">
+            
+            <!-- Click Counter Test -->
+            <div class="test-card">
+              <div class="test-card-header">
+                <span>🎯</span>
+                <h3>Thử nghiệm Click trái</h3>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">
+                Chỉ ngón trỏ vào nút rồi chụm ngón trỏ với ngón cái để bấm:
+              </p>
+              <button id="test-btn-counter" class="test-target-btn">
+                Đã click: <span id="click-counter-val">0</span> lần
+              </button>
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-align: center;">
+                (Nhờ cơ chế Deadzone, trỏ chuột sẽ không bị trượt khi bấm)
+              </div>
+            </div>
+
+            <!-- Double Click Test -->
+            <div class="test-card">
+              <div class="test-card-header">
+                <span>⚡</span>
+                <h3>Thử nghiệm Double Click</h3>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">
+                Chụm nhả 2 lần liên tiếp nhanh:
+              </p>
+              <button id="test-btn-dblclick" class="test-target-btn" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3);">
+                Trạng thái: <span id="dblclick-state">Chưa kích hoạt</span>
+              </button>
+            </div>
+
+            <!-- Right Click Context Menu -->
+            <div class="test-card">
+              <div class="test-card-header">
+                <span>🖱️</span>
+                <h3>Thử nghiệm Chuột phải</h3>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">
+                Chụm ngón cái + ngón giữa hoặc giữ chụm 0.5s trong ô này:
+              </p>
+              <div id="context-zone" class="context-click-zone">
+                <span>📍 Rê chuột vào đây & Thử chuột phải</span>
+                <!-- Context Menu Popup -->
+                <div id="context-popup" class="context-menu-popup">
+                  <div class="context-menu-item" onclick="alert('Đã chọn: Mở tab mới')">📄 Mở tab mới</div>
+                  <div class="context-menu-item" onclick="alert('Đã chọn: Sao chép')">📋 Sao chép</div>
+                  <div class="context-menu-item" onclick="alert('Đã chọn: Kiểm tra phần tử')">🔍 Kiểm tra phần tử</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Tab 2: Drag and Drop Kanban -->
+        <div id="tab-kanban" class="tab-content" role="tabpanel">
+          <div class="drag-playground">
+            
+            <div class="kanban-col" id="col-todo">
+              <div class="kanban-col-header">
+                <span>📋 CẦN LÀM (TO DO)</span>
+                <span class="count-pill">2</span>
+              </div>
+              <div class="kanban-items-container" data-status="todo">
+                <div class="draggable-chip" draggable="true" id="card-1">
+                  <span class="chip-handle">⠿</span>
+                  <div>
+                    <strong style="display: block; font-size: 0.9rem;">Thử nghiệm kéo thả</strong>
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">Chụm giữ để gắp thẻ</span>
+                  </div>
+                </div>
+                <div class="draggable-chip" draggable="true" id="card-2">
+                  <span class="chip-handle">⠿</span>
+                  <div>
+                    <strong style="display: block; font-size: 0.9rem;">Cân chỉnh 4 góc</strong>
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">Mapping vùng camera</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="kanban-col" id="col-inprogress">
+              <div class="kanban-col-header">
+                <span>⚡ ĐANG LÀM (IN PROGRESS)</span>
+                <span class="count-pill">1</span>
+              </div>
+              <div class="kanban-items-container" data-status="inprogress">
+                <div class="draggable-chip" draggable="true" id="card-3">
+                  <span class="chip-handle">⠿</span>
+                  <div>
+                    <strong style="display: block; font-size: 0.9rem;">Lọc rung One-Euro</strong>
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">Triệt tiêu jitter tay</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="kanban-col" id="col-done">
+              <div class="kanban-col-header">
+                <span>✅ HOÀN THÀNH (DONE)</span>
+                <span class="count-pill">1</span>
+              </div>
+              <div class="kanban-items-container" data-status="done">
+                <div class="draggable-chip" draggable="true" id="card-4">
+                  <span class="chip-handle">⠿</span>
+                  <div>
+                    <strong style="display: block; font-size: 0.9rem;">MediaPipe Hand Tracking</strong>
+                    <span style="font-size: 0.75rem; color: var(--text-dim);">Nhận diện 21 khớp xương</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Tab 3: Whiteboard Drawing -->
+        <div id="tab-drawing" class="tab-content" role="tabpanel">
+          <div class="whiteboard-container">
+            <div class="whiteboard-toolbar">
+              <div class="color-picker-group">
+                <div class="color-dot active" data-color="#38bdf8" style="background: #38bdf8;"></div>
+                <div class="color-dot" data-color="#10b981" style="background: #10b981;"></div>
+                <div class="color-dot" data-color="#f59e0b" style="background: #f59e0b;"></div>
+                <div class="color-dot" data-color="#f43f5e" style="background: #f43f5e;"></div>
+                <div class="color-dot" data-color="#ffffff" style="background: #ffffff;"></div>
+              </div>
+              <div style="font-size: 0.85rem; color: var(--text-muted);">
+                Chụm ngón tay & vẽ trong không khí để thử độ mượt
+              </div>
+              <button id="btn-clear-canvas" class="btn-action">
+                <span>🗑️</span> Xóa bảng vẽ
+              </button>
+            </div>
+            <canvas id="drawing-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Tab 4: Slide Deck (Swipe) -->
+        <div id="tab-slides" class="tab-content" role="tabpanel">
+          <div class="slides-wrapper">
+            
+            <div class="slide-item" id="active-slide">
+              <div class="slide-number">Trang <span id="current-slide-num">1</span> / 4</div>
+              <h3 class="slide-title" id="current-slide-title">Chào mừng đến với HandCursor</h3>
+              <p class="slide-body" id="current-slide-body">
+                Giải pháp điều khiển máy tính không chạm thế hệ mới. Hãy thử vuốt cả bàn tay sang trái hoặc phải trước webcam để chuyển trang slide!
+              </p>
+            </div>
+
+            <div class="slide-controls">
+              <button id="btn-slide-prev" class="btn-action">← Trang trước (Vuốt Phải)</button>
+              <button id="btn-slide-next" class="btn-action primary">Trang sau (Vuốt Trái) →</button>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Calibration Modal Wizard -->
+  <div id="calibration-modal" class="modal-backdrop">
+    <div class="modal-card">
+      <span style="font-size: 3rem;">🎯</span>
+      <h2 style="font-size: 1.5rem; font-weight: 700;">Hiệu chỉnh 4 góc màn hình (10s)</h2>
+      <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">
+        Hệ thống sẽ lần lượt kích hoạt 4 điểm ở 4 góc màn hình. Hãy đưa ngón tay trỏ đến từng vòng tròn phát sáng và chụm ngón để ghi nhận tọa độ!
+      </p>
+      <div style="font-family: var(--font-mono); font-size: 1.1rem; color: var(--accent-cyan);" id="calibration-step-text">
+        Bước 1: Chạm vào góc trên cùng bên trái
+      </div>
+      <div>
+        <button id="btn-start-calib-step" class="btn-action primary" style="padding: 0.7rem 1.8rem;">Bắt đầu cân chỉnh</button>
+        <button id="btn-close-calib" class="btn-action" style="margin-left: 0.5rem;">Bỏ qua</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Application Logic Module -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
