@@ -223,7 +223,7 @@ class HandCursorState:
         self.is_paused = False
         self.show_camera_window = False
         self.auto_mute_typing = True
-        self.sensitivity_preset = 1.4  # Default medium
+        self.sensitivity_preset = 2.0  # Default fast & responsive
         self.typing_mute_until = 0.0
 
 shared_state = HandCursorState()
@@ -375,7 +375,14 @@ def tracking_worker():
                 d_pinky_mcp = math.dist((pinky_mcp.x, pinky_mcp.y), (wrist.x, wrist.y))
                 is_pinky_folded = d_pinky < d_pinky_mcp * 1.25
 
-                pinch_left = math.dist((thumb_tip.x, thumb_tip.y), (index_tip.x, index_tip.y))
+                # Cursor Anchor: Blend tip (8) with DIP (7) for rock-solid stability when pointing at camera
+                anchor_x = 0.8 * index_tip.x + 0.2 * landmarks[7].x
+                anchor_y = 0.8 * index_tip.y + 0.2 * landmarks[7].y
+
+                # Pinch & Trigger Click: Measure distance to tip OR joint (supports pinch and pistol trigger tap)
+                dist_tip = math.dist((thumb_tip.x, thumb_tip.y), (index_tip.x, index_tip.y))
+                dist_joint = math.dist((thumb_tip.x, thumb_tip.y), (landmarks[6].x, landmarks[6].y))
+                pinch_left = min(dist_tip, dist_joint)
                 pinch_right = math.dist((thumb_tip.x, thumb_tip.y), (middle_tip.x, middle_tip.y))
 
                 # Swipe History for Window Management
@@ -448,8 +455,8 @@ def tracking_worker():
 
                 # Mouse Move & Click
                 if not is_two_finger_scroll:
-                    norm_x = (index_tip.x - box_x_min) / calib_w
-                    norm_y = (index_tip.y - box_y_min) / calib_h
+                    norm_x = (anchor_x - box_x_min) / calib_w
+                    norm_y = (anchor_y - box_y_min) / calib_h
 
                     target_x = SCREEN_WIDTH * norm_x
                     target_y = SCREEN_HEIGHT * norm_y
