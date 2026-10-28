@@ -258,8 +258,8 @@ def tracking_worker():
 
     point_filter = FastPointFilter(min_cutoff=0.8, beta=0.045)
 
-    box_x_min, box_x_max = 0.18, 0.82
-    box_y_min, box_y_max = 0.18, 0.82
+    box_x_min, box_x_max = 0.25, 0.75
+    box_y_min, box_y_max = 0.25, 0.75
     calib_w = box_x_max - box_x_min
     calib_h = box_y_max - box_y_min
 
