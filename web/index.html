@@ -197,9 +197,9 @@
             <div class="slider-item">
               <div class="slider-label-row">
                 <span>Tốc độ chuột (Sensitivity)</span>
-                <span id="lbl-sensitivity">1.5x</span>
+                <span id="lbl-sensitivity">1.8x</span>
               </div>
-              <input type="range" id="rng-sensitivity" class="slider-input" min="0.8" max="3.0" step="0.1" value="1.5">
+              <input type="range" id="rng-sensitivity" class="slider-input" min="0.8" max="3.0" step="0.1" value="1.8">
             </div>
             <div class="slider-item">
               <div class="slider-label-row">
@@ -215,6 +215,27 @@
               </div>
               <input type="range" id="rng-pinch-thresh" class="slider-input" min="0.03" max="0.09" step="0.005" value="0.055">
             </div>
+          </div>
+        </section>
+
+        <!-- Calibration Save Card -->
+        <section class="card-glass" aria-labelledby="calib-save-title">
+          <div class="card-title-row">
+            <h2 id="calib-save-title" class="card-title">💾 Lưu cấu hình Calibration</h2>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            Lưu vùng hoạt động tay hiện tại để không cần chỉnh lại lần sau.
+          </p>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="btn-save-calib" class="btn-action primary" style="flex: 1;">
+              <span>💾</span> Lưu cấu hình
+            </button>
+            <button id="btn-reset-calib" class="btn-action" style="flex: 1;">
+              <span>🔄</span> Reset mặc định
+            </button>
+          </div>
+          <div id="calib-status-text" style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.5rem; text-align: center;">
+            Chưa lưu cấu hình
           </div>
         </section>
 

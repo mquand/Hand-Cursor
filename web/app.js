@@ -31,10 +31,10 @@ const state = {
 
   // Calibration Box (Normalized webcam coordinates mapped to viewport)
   calib: {
-    minX: 0.20,
-    maxX: 0.80,
-    minY: 0.20,
-    maxY: 0.80,
+    minX: 0.25,
+    maxX: 0.75,
+    minY: 0.25,
+    maxY: 0.75,
     step: 0,
     active: false
   },
@@ -43,7 +43,7 @@ const state = {
   palmHistory: [],
 
   // Settings
-  sensitivity: 1.5,
+  sensitivity: 1.8,
   pinchThreshold: 0.055,
   drawLandmarks: true
 };
@@ -78,6 +78,11 @@ const lblSensitivity = document.getElementById('lbl-sensitivity');
 const lblSmoothing = document.getElementById('lbl-smoothing');
 const lblPinchThresh = document.getElementById('lbl-pinch-thresh');
 const chkDrawMesh = document.getElementById('chk-draw-mesh');
+
+// Calibration Save Buttons
+const btnSaveCalib = document.getElementById('btn-save-calib');
+const btnResetCalib = document.getElementById('btn-reset-calib');
+const calibStatusText = document.getElementById('calib-status-text');
 
 // Interactive Playground Elements
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -787,3 +792,83 @@ function setupEventListeners() {
 // Start
 setupEventListeners();
 updateSlideView();
+
+// Load saved calibration from localStorage on startup
+function loadSavedCalibration() {
+  try {
+    const saved = localStorage.getItem('handcursor_calibration');
+    if (saved) {
+      const config = JSON.parse(saved);
+      if (config.calib && config.sensitivity !== undefined) {
+        state.calib = config.calib;
+        state.sensitivity = config.sensitivity;
+        state.pinchThreshold = config.pinchThreshold || 0.055;
+
+        // Update UI
+        rngSensitivity.value = state.sensitivity;
+        lblSensitivity.textContent = `${state.sensitivity.toFixed(1)}x`;
+        rngPinchThresh.value = state.pinchThreshold;
+        lblPinchThresh.textContent = state.pinchThreshold.toFixed(3);
+
+        calibStatusText.textContent = 'Đã tải cấu hình đã lưu';
+        calibStatusText.style.color = 'var(--accent-green)';
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load calibration:', e);
+  }
+}
+
+// Save current calibration to localStorage
+function saveCalibration() {
+  try {
+    const config = {
+      calib: state.calib,
+      sensitivity: state.sensitivity,
+      pinchThreshold: state.pinchThreshold
+    };
+    localStorage.setItem('handcursor_calibration', JSON.stringify(config));
+    calibStatusText.textContent = 'Đã lưu cấu hình ✓';
+    calibStatusText.style.color = 'var(--accent-green)';
+  } catch (e) {
+    console.error('Failed to save calibration:', e);
+    calibStatusText.textContent = 'Lỗi khi lưu';
+    calibStatusText.style.color = 'var(--accent-red)';
+  }
+}
+
+// Reset calibration to defaults
+function resetCalibration() {
+  state.calib = {
+    minX: 0.25,
+    maxX: 0.75,
+    minY: 0.25,
+    maxY: 0.75,
+    step: 0,
+    active: false
+  };
+  state.sensitivity = 1.8;
+  state.pinchThreshold = 0.055;
+
+  // Update UI
+  rngSensitivity.value = state.sensitivity;
+  lblSensitivity.textContent = `${state.sensitivity.toFixed(1)}x`;
+  rngPinchThresh.value = state.pinchThreshold;
+  lblPinchThresh.textContent = state.pinchThreshold.toFixed(3);
+
+  // Clear localStorage
+  localStorage.removeItem('handcursor_calibration');
+  calibStatusText.textContent = 'Đã reset về mặc định';
+  calibStatusText.style.color = 'var(--text-dim)';
+}
+
+// Add calibration save/reset event listeners
+if (btnSaveCalib) {
+  btnSaveCalib.addEventListener('click', saveCalibration);
+}
+if (btnResetCalib) {
+  btnResetCalib.addEventListener('click', resetCalibration);
+}
+
+// Load saved calibration on startup
+loadSavedCalibration();

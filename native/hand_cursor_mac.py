@@ -9,6 +9,7 @@ Full mouse functionality:
   5. Right Click: Pinch (Thumb + Middle)
   6. Drag & Drop / Selection: Pinch & Hold & Move
   7. Pause / Clutch: Fist (Cuộn bàn tay)
+  8. Calibration: Press 'c' to calibrate 4 corners, 's' to save, 'r' to reset
 """
 
 import sys
@@ -16,6 +17,8 @@ import time
 import math
 import threading
 import ctypes
+import json
+import os
 from ctypes import c_void_p, c_int, c_uint32, c_int32, c_double, Structure
 
 import cv2
@@ -212,6 +215,56 @@ class FastPointFilter:
     def filter(self, x, y, timestamp):
         return (self.fx.filter(x, timestamp), self.fy.filter(y, timestamp))
 
+# ==================== Calibration Config Management ====================
+CONFIG_FILE = os.path.expanduser("~/.handcursor_config.json")
+
+def load_calibration_config():
+    """Load calibration from config file if exists"""
+    global box_x_min, box_x_max, box_y_min, box_y_max, sensitivity
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                box_x_min = config.get('box_x_min', 0.25)
+                box_x_max = config.get('box_x_max', 0.75)
+                box_y_min = config.get('box_y_min', 0.25)
+                box_y_max = config.get('box_y_max', 0.75)
+                sensitivity = config.get('sensitivity', 1.8)
+                print(f"✅ Đã tải cấu hình từ {CONFIG_FILE}")
+                return True
+    except Exception as e:
+        print(f"⚠️ Lỗi khi tải cấu hình: {e}")
+    return False
+
+def save_calibration_config():
+    """Save current calibration to config file"""
+    global box_x_min, box_x_max, box_y_min, box_y_max, sensitivity
+    try:
+        config = {
+            'box_x_min': box_x_min,
+            'box_x_max': box_x_max,
+            'box_y_min': box_y_min,
+            'box_y_max': box_y_max,
+            'sensitivity': sensitivity
+        }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        print(f"✅ Đã lưu cấu hình vào {CONFIG_FILE}")
+        return True
+    except Exception as e:
+        print(f"⚠️ Lỗi khi lưu cấu hình: {e}")
+        return False
+
+def reset_calibration_config():
+    """Reset calibration to default values"""
+    global box_x_min, box_x_max, box_y_min, box_y_max, sensitivity
+    box_x_min, box_x_max = 0.25, 0.75
+    box_y_min, box_y_max = 0.25, 0.75
+    sensitivity = 1.8
+    if os.path.exists(CONFIG_FILE):
+        os.remove(CONFIG_FILE)
+    print("✅ Đã reset về cấu hình mặc định")
+
 # ==================== Main Controller ====================
 def main():
     print("=" * 70)
@@ -226,7 +279,15 @@ def main():
     print("  🤌 Chụm ngón giữa + cái   : Chuột phải (Context Menu)")
     print("  ✊ Nắm đấm                : Tạm dừng / Nhấc chuột (Clutch)")
     print("=" * 70)
-    print(" Phím tắt: Nhấn 'q' trên cửa sổ camera để thoát.")
+    print(" ⌨️ Phím tắt:")
+    print("  'q' : Thoát chương trình")
+    print("  'c' : Chế độ Calibration (Đưa tay tới 4 góc)")
+    print("  's' : Lưu cấu hình Calibration hiện tại")
+    print("  'r' : Reset về cấu hình mặc định")
+    print("=" * 70)
+
+    # Load saved calibration config
+    load_calibration_config()
 
     # MediaPipe Lite (60 FPS on Apple Silicon)
     mp_hands = mp.solutions.hands
@@ -249,14 +310,21 @@ def main():
     point_filter = FastPointFilter(min_cutoff=0.8, beta=0.045)
 
     # Active hand boundary
-    box_x_min, box_x_max = 0.18, 0.82
-    box_y_min, box_y_max = 0.18, 0.82
+    box_x_min, box_x_max = 0.25, 0.75
+    box_y_min, box_y_max = 0.25, 0.75
     calib_w = box_x_max - box_x_min
     calib_h = box_y_max - box_y_min
 
-    sensitivity = 1.35
+    sensitivity = 1.8
     PINCH_CLICK_THRESH = 0.052
     PINCH_RIGHT_THRESH = 0.050
+
+    # Calibration Mode State
+    in_calibration_mode = False
+    calib_step = 0  # 0-3 for 4 corners
+    calib_corners = []  # Store (x, y) for each corner
+    calib_w = box_x_max - box_x_min
+    calib_h = box_y_max - box_y_min
 
     # States
     is_left_down = False
@@ -318,6 +386,52 @@ def main():
                 middle_mcp = landmarks[9]
                 ring_mcp = landmarks[13]
                 pinky_mcp = landmarks[17]
+
+                # Calibration Mode Logic
+                if in_calibration_mode:
+                    pinch_left = math.dist((thumb_tip.x, thumb_tip.y), (index_tip.x, index_tip.y))
+
+                    if pinch_left < PINCH_CLICK_THRESH:
+                        # Pinch detected - capture this corner
+                        calib_corners.append((index_tip.x, index_tip.y))
+                        calib_step += 1
+
+                        if calib_step >= 4:
+                            # All 4 corners captured - update calibration box
+                            xs = [c[0] for c in calib_corners]
+                            ys = [c[1] for c in calib_corners]
+                            box_x_min, box_x_max = min(xs), max(xs)
+                            box_y_min, box_y_max = min(ys), max(ys)
+                            calib_w = box_x_max - box_x_min
+                            calib_h = box_y_max - box_y_min
+
+                            in_calibration_mode = False
+                            print(f"\n✅ Calibration hoàn tất!")
+                            print(f"   Box: X[{box_x_min:.3f}-{box_x_max:.3f}] Y[{box_y_min:.3f}-{box_y_max:.3f}]")
+                            print(f"   Nhấn 's' để lưu cấu hình")
+                        else:
+                            corner_names = ["góc trên trái", "góc trên phải", "góc dưới phải", "góc dưới trái"]
+                            print(f"\n🎯 Đã ghi nhận góc {calib_step}/4 - Đưa tay tới {corner_names[calib_step]}")
+
+                    # Draw calibration overlay
+                    if calib_step < 4:
+                        corner_positions = [
+                            (50, 50), (w - 50, 50), (w - 50, h - 50), (50, h - 50)
+                        ]
+                        cv2.circle(frame, corner_positions[calib_step], 30, (0, 255, 0), 3)
+                        cv2.putText(frame, f"Calib {calib_step + 1}/4", (50, h - 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+                    status_str = f"CALIBRATION {calib_step + 1}/4"
+                    status_color = (0, 255, 0)
+                    mp_draw.draw_landmarks(
+                        frame,
+                        results.multi_hand_landmarks[0],
+                        mp_hands.HAND_CONNECTIONS,
+                        mp_styles.get_default_hand_landmarks_style(),
+                        mp_styles.get_default_hand_connections_style()
+                    )
+                    continue  # Skip normal processing during calibration
 
                 # 1. Check Fist (Tạm dừng / Nhấc chuột)
                 tips = [8, 12, 16, 20]
@@ -487,8 +601,23 @@ def main():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.62, status_color, 2)
 
             cv2.imshow("HandCursor Full Mouse (Nhan 'q' de thoat)", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+
+            # Keyboard shortcuts
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
                 break
+            elif key == ord('c'):
+                # Start calibration mode
+                in_calibration_mode = True
+                calib_step = 0
+                calib_corners = []
+                print("\n🎯 Chế độ Calibration: Đưa ngón tay tới góc trên trái (1/4)")
+            elif key == ord('s'):
+                # Save calibration
+                save_calibration_config()
+            elif key == ord('r'):
+                # Reset calibration
+                reset_calibration_config()
 
     finally:
         if is_left_down:
