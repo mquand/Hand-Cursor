@@ -256,7 +256,7 @@ def tracking_worker():
         rumps.notification("HandCursor", "Lỗi Camera", "Chưa cấp quyền camera trong System Settings -> Privacy & Security -> Camera")
         return
 
-    point_filter = FastPointFilter(min_cutoff=0.8, beta=0.045)
+    point_filter = FastPointFilter(min_cutoff=0.4, beta=0.02)
 
     box_x_min, box_x_max = 0.25, 0.75
     box_y_min, box_y_max = 0.25, 0.75

@@ -307,7 +307,7 @@ def main():
         return
     time.sleep(0.3)
 
-    point_filter = FastPointFilter(min_cutoff=0.8, beta=0.045)
+    point_filter = FastPointFilter(min_cutoff=0.4, beta=0.02)
 
     # Active hand boundary
     box_x_min, box_x_max = 0.25, 0.75

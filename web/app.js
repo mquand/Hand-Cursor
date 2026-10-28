@@ -48,8 +48,8 @@ const state = {
   drawLandmarks: true
 };
 
-// Filter instances: minCutoff=0.8 (silky still), beta=0.045 (zero lag on move)
-const cursorFilter = new Point2DFilter(0.8, 0.045);
+// Filter instances: minCutoff=0.4 (smooth jitter), beta=0.02 (less lag, more stability)
+const cursorFilter = new Point2DFilter(0.4, 0.02);
 
 // DOM Elements
 const videoEl = document.getElementById('webcam-video');
